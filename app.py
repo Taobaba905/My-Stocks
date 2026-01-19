@@ -4,79 +4,94 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime
 
-st.set_page_config(page_title="34只股票监控助手", layout="wide")
+st.set_page_config(page_title="北美34只精选股看板", layout="wide")
 
-st.title("🚀 我的股票实时监控面板")
+st.title("📊 北美多市场实时看板")
+st.caption(f"最后更新: {datetime.now().strftime('%H:%M:%S')} | 配色方案：绿涨 / 红跌 / 零轴深灰")
 
-# 侧边栏配置
-st.sidebar.header("配置中心")
-ticker_raw = st.sidebar.text_area(
-    "股票代码列表 (已为你格式化):", 
-    "AQN.TO, BCE.TO, CEMX.TO, COIN.NE, CRM.NE, CU.TO, ILLM.TO, LIF.NE, XSP.TO, VRGO.TO, UNH.NE, SHOP.TO, T.TO, MSTR.NE, NOWS.NE, AMD, AMZN, AVGO, COIN, COST, CRM, GOOG, LULU, META, MSFT, MSTR, NFLX, NOW, NVDA, PLTR, SHOP, SMCI, TSLA, UNH",
-    height=200
-)
+# 侧边栏：配置中心
+default_tickers = "AQN.TO, BCE.TO, CEMX.TO, COIN.NE, CRM.NE, CU.TO, ILLM.TO, LIF.NE, XSP.TO, VGRO.TO, UNH.NE, SHOP.TO, T.TO, MSTR.NE, NOWS.NE, AMD, AMZN, AVGO, COIN, COST, CRM, GOOG, LULU, META, MSFT, MSTR, NFLX, NOW, NVDA, PLTR, SHOP, SMCI, TSLA, UNH"
+tickers_raw = st.sidebar.text_area("监控名单:", default_tickers, height=150)
 
-# 按钮：强制开始抓取
-run_button = st.sidebar.button("📊 点击获取/更新数据")
-
-if run_button:
-    tickers = [t.strip().upper() for t in ticker_raw.split(",") if t.strip()]
-    st.write(f"正在尝试获取 {len(tickers)} 只股票的数据...")
+if st.sidebar.button("🚀 刷新全量数据"):
+    tickers = [t.strip().upper() for t in tickers_raw.split(",") if t.strip()]
+    data_results = []
     
-    data_list = []
-    placeholder = st.empty() # 创建一个动态显示区域
-    
-    # 逐个抓取，防止整体崩溃
-    for t in tickers:
-        with st.status(f"正在抓取 {t}...", expanded=False) as status:
+    with st.spinner('正在同步数据...'):
+        for t in tickers:
             try:
-                # 使用较短的 period 提高速度
-                tick = yf.Ticker(t)
-                # 获取最近两天的价格来计算涨跌
-                hist = tick.history(period="2d")
+                stock = yf.Ticker(t)
+                fast = stock.fast_info
+                hist = stock.history(period="5d")
+                if hist.empty: continue
                 
-                if not hist.empty and len(hist) >= 1:
-                    current_price = hist['Close'].iloc[-1]
-                    # 如果有前一天的价格就算涨幅，否则显示 0
-                    if len(hist) > 1:
-                        prev_close = hist['Close'].iloc[-2]
-                        change = ((current_price - prev_close) / prev_close) * 100
-                    else:
-                        change = 0.0
-                    
-                    # 尝试获取 PE 和 成交量
-                    info = tick.fast_info
-                    
-                    data_list.append({
-                        "代码": t,
-                        "价格": round(current_price, 2),
-                        "涨跌幅(%)": round(change, 2),
-                        "成交量": f"{info['last_volume']/1e6:.2f}M" if 'last_volume' in info else "N/A"
-                    })
-                    status.update(label=f"✅ {t} 完成", state="complete")
-                else:
-                    status.update(label=f"⚠️ {t} 无数据 (可能是闭市或代码错)", state="error")
-            except Exception as e:
-                status.update(label=f"❌ {t} 发生错误", state="error")
-                continue
+                # 计算涨跌
+                current_p = hist['Close'].iloc[-1]
+                prev_p = hist['Close'].iloc[-2]
+                change = ((current_p - prev_p) / prev_p) * 100
+                
+                # 格式化成交量
+                vol = fast['last_volume']
+                vol_str = f"{vol/1e6:.2f}M" if vol >= 1e6 else f"{vol/1e3:.2f}K"
 
-    # 抓取完成后显示结果
-    if data_list:
-        df = pd.DataFrame(data_list)
-        
-        # 1. 热力图
+                data_results.append({
+                    "代码": t,
+                    "价格": round(current_p, 2),
+                    "涨跌幅(%)": round(change, 2),
+                    "PE": stock.info.get('forwardPE', 'N/A'),
+                    "成交量": vol_str,
+                    "raw_vol": vol
+                })
+            except: continue
+
+    if data_results:
+        df = pd.DataFrame(data_results).sort_values("涨跌幅(%)", ascending=False)
+
+        # --- 1. 重新设计的渐变热力图 ---
         st.subheader("🔥 今日涨跌幅分布")
-        fig = px.bar(df, x="代码", y="涨跌幅(%)", color="涨跌幅(%)",
-                     color_continuous_scale='RdYlGn', 
-                     range_color=[-3, 3],
-                     text_auto='.2f')
-        st.plotly_chart(fig, use_container_width=True)
         
-        # 2. 详细列表
-        st.subheader("📋 实时数据清单")
-        st.dataframe(df, use_container_width=True, height=800)
-    else:
-        st.error("所有股票都未能获取数据，请检查网络连接或稍后再试。")
+        # 构建自定义颜色渐变：红色(跌) -> 深灰(0) -> 绿色(涨)
+        # 这种色标确保 0 附近是深灰色
+        custom_color_scale = [
+            [0.0, "rgb(150, 0, 0)"],    # 深红
+            [0.4, "rgb(255, 100, 100)"], # 浅红
+            [0.5, "rgb(60, 60, 60)"],    # 深灰 (中间点)
+            [0.6, "rgb(100, 255, 100)"], # 浅绿
+            [1.0, "rgb(0, 150, 0)"]     # 深绿
+        ]
 
-else:
-    st.info("👈 请点击左侧按钮开始获取实时行情")
+        fig = px.bar(
+            df, x="代码", y="涨跌幅(%)", color="涨跌幅(%)",
+            color_continuous_scale=custom_color_scale,
+            range_color=[-4, 4], # 设定正负4%为颜色极限
+            text_auto='.2f'
+        )
+        # 优化图表样式
+        fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', coloraxis_showscale=False)
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.divider()
+
+        # --- 2. 实时数据清单 ---
+        st.subheader("📋 详细数据清单")
+        
+        # 定义表格配色函数
+        def color_text(val):
+            if isinstance(val, (int, float)):
+                if val > 0.1: return 'color: #00FF00; font-weight: bold' # 亮绿
+                if val < -0.1: return 'color: #FF4B4B; font-weight: bold' # 亮红
+                return 'color: #808080' # 灰色
+            return ''
+
+        st.dataframe(
+            df.style.applymap(color_text, subset=['涨跌幅(%)']),
+            column_config={
+                "涨跌幅(%)": st.column_config.NumberColumn(format="%.2f%%"),
+                "价格": st.column_config.NumberColumn(format="$ %.2f"),
+                "raw_vol": None
+            },
+            use_container_width=True,
+            height=800
+        )
+    else:
+        st.error("数据抓取失败，请检查网络。")
