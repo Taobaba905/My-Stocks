@@ -4,79 +4,109 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime
 
-st.set_page_config(page_title="34只股票监控助手", layout="wide")
+st.set_page_config(page_title="北美34只精选股看板", layout="wide")
 
-st.title("🚀 我的股票实时监控面板")
+# 自定义 CSS 样式，让表格更漂亮
+st.markdown("""
+    <style>
+    .main { background-color: #f5f7f9; }
+    .stDataFrame { border-radius: 10px; }
+    </style>
+    """, unsafe_allow_html=True)
 
-# 侧边栏配置
-st.sidebar.header("配置中心")
-ticker_raw = st.sidebar.text_area(
-    "股票代码列表 (已为你格式化):", 
-    "AQN.TO, BCE.TO, CEMX.TO, COIN.NE, CRM.NE, CU.TO, ILLM.TO, LIF.NE, XSP.TO, VGRO.TO, UNH.NE, SHOP.TO, T.TO, MSTR.NE, NOWS.NE, AMD, AMZN, AVGO, COIN, COST, CRM, GOOG, LULU, META, MSFT, MSTR, NFLX, NOW, NVDA, PLTR, SHOP, SMCI, TSLA, UNH",
-    height=200
-)
+st.title("📊 北美市场多维度实时看板")
+st.caption(f"最后更新: {datetime.now().strftime('%H:%M:%S')} | 涵盖美股、TSX、CDR")
 
-# 按钮：强制开始抓取
-run_button = st.sidebar.button("📊 点击获取/更新数据")
+# 侧边栏：这里已经修正了 VGRO.TO
+default_tickers = "AQN.TO, BCE.TO, CEMX.TO, COIN.NE, CRM.NE, CU.TO, ILLM.TO, LIF.NE, XSP.TO, VGRO.TO, UNH.NE, SHOP.TO, T.TO, MSTR.NE, NOWS.NE, AMD, AMZN, AVGO, COIN, COST, CRM, GOOG, LULU, META, MSFT, MSTR, NFLX, NOW, NVDA, PLTR, SHOP, SMCI, TSLA, UNH"
+tickers_raw = st.sidebar.text_area("监控名单 (34只):", default_tickers, height=200)
 
-if run_button:
-    tickers = [t.strip().upper() for t in ticker_raw.split(",") if t.strip()]
-    st.write(f"正在尝试获取 {len(tickers)} 只股票的数据...")
+if st.sidebar.button("🚀 刷新全量数据"):
+    tickers = [t.strip().upper() for t in tickers_raw.split(",") if t.strip()]
     
-    data_list = []
-    placeholder = st.empty() # 创建一个动态显示区域
+    data_results = []
     
-    # 逐个抓取，防止整体崩溃
-    for t in tickers:
-        with st.status(f"正在抓取 {t}...", expanded=False) as status:
+    with st.spinner('正在同步全球市场数据...'):
+        for t in tickers:
             try:
-                # 使用较短的 period 提高速度
-                tick = yf.Ticker(t)
-                # 获取最近两天的价格来计算涨跌
-                hist = tick.history(period="2d")
+                stock = yf.Ticker(t)
+                # 获取价格和基础信息
+                fast = stock.fast_info
+                hist = stock.history(period="60d") # 获取历史用于计算MACD
                 
-                if not hist.empty and len(hist) >= 1:
-                    current_price = hist['Close'].iloc[-1]
-                    # 如果有前一天的价格就算涨幅，否则显示 0
-                    if len(hist) > 1:
-                        prev_close = hist['Close'].iloc[-2]
-                        change = ((current_price - prev_close) / prev_close) * 100
-                    else:
-                        change = 0.0
-                    
-                    # 尝试获取 PE 和 成交量
-                    info = tick.fast_info
-                    
-                    data_list.append({
-                        "代码": t,
-                        "价格": round(current_price, 2),
-                        "涨跌幅(%)": round(change, 2),
-                        "成交量": f"{info['last_volume']/1e6:.2f}M" if 'last_volume' in info else "N/A"
-                    })
-                    status.update(label=f"✅ {t} 完成", state="complete")
+                if hist.empty: continue
+                
+                # 1. 价格与涨跌幅
+                current_p = hist['Close'].iloc[-1]
+                prev_p = hist['Close'].iloc[-2]
+                change = ((current_p - prev_p) / prev_p) * 100
+                
+                # 2. 计算简易 MACD
+                exp1 = hist['Close'].ewm(span=12, adjust=False).mean()
+                exp2 = hist['Close'].ewm(span=26, adjust=False).mean()
+                macd_line = exp1 - exp2
+                signal_line = macd_line.ewm(span=9, adjust=False).mean()
+                macd_status = "↗️ 看多" if macd_line.iloc[-1] > signal_line.iloc[-1] else "↘️ 看空"
+                
+                # 3. 统一成交量单位
+                vol = fast['last_volume']
+                if vol >= 1e6:
+                    vol_str = f"{vol/1e6:.2f} M"
+                elif vol >= 1e3:
+                    vol_str = f"{vol/1e3:.2f} K"
                 else:
-                    status.update(label=f"⚠️ {t} 无数据 (可能是闭市或代码错)", state="error")
-            except Exception as e:
-                status.update(label=f"❌ {t} 发生错误", state="error")
+                    vol_str = str(vol)
+
+                data_results.append({
+                    "股票代码": t,
+                    "当前价格": round(current_p, 2),
+                    "今日涨跌": round(change, 2), # 用于绘制表格内柱状图
+                    "MACD趋势": macd_status,
+                    "市盈率(PE)": stock.info.get('forwardPE', 'N/A'),
+                    "成交量": vol_str,
+                    "原始成交量": vol # 隐藏列，用于排序
+                })
+            except:
                 continue
 
-    # 抓取完成后显示结果
-    if data_list:
-        df = pd.DataFrame(data_list)
+    if data_results:
+        df = pd.DataFrame(data_results)
         
-        # 1. 热力图
-        st.subheader("🔥 今日涨跌幅分布")
-        fig = px.bar(df, x="代码", y="涨跌幅(%)", color="涨跌幅(%)",
-                     color_continuous_scale='RdYlGn', 
-                     range_color=[-3, 3],
-                     text_auto='.2f')
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # 2. 详细列表
-        st.subheader("📋 实时数据清单")
-        st.dataframe(df, use_container_width=True, height=800)
-    else:
-        st.error("所有股票都未能获取数据，请检查网络连接或稍后再试。")
+        # 按照涨跌幅排序
+        df = df.sort_values("今日涨跌", ascending=False)
 
+        # 核心呈现：将分布图合并到清单中
+        st.subheader("📋 实时数据综合清单 (含涨跌趋势)")
+        
+        st.dataframe(
+            df,
+            column_config={
+                "今日涨跌": st.column_config.ProgressColumn(
+                    "今日涨跌幅度 (%)",
+                    help="当日价格变动百分比",
+                    format="%.2f %%",
+                    min_value=-5, # 涨跌幅显示范围
+                    max_value=5,
+                ),
+                "当前价格": st.column_config.NumberColumn(format="$ %.2f"),
+                "市盈率(PE)": st.column_config.NumberColumn(format="%.2f"),
+                "原始成交量": None, # 隐藏这一列
+            },
+            use_container_width=True,
+            height=1000
+        )
+        
+        # 底部提供一个小型的热力统计
+        st.divider()
+        c1, c2 = st.columns(2)
+        with c1:
+            up_count = len(df[df['今日涨跌'] > 0])
+            st.metric("今日上涨家数", f"{up_count} 只", delta=f"{up_count - 17}")
+        with c2:
+            st.write("💡 提示：点击表头可以按价格、PE或涨跌幅进行快速排序。")
+            
+    else:
+        st.warning("未能获取到数据，请点击左侧按钮重试。")
 else:
-    st.info("👈 请点击左侧按钮开始获取实时行情")
+    st.info("👈 请在左侧确认 34 只股票代码后，点击【刷新全量数据】按钮。")
+    
