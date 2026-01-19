@@ -1,93 +1,82 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import plotly.graph_objects as go
+import plotly.express as px
 from datetime import datetime
 
-st.set_page_config(page_title="北美34只精选股看板", layout="wide")
+st.set_page_config(page_title="34只股票监控助手", layout="wide")
 
-st.title("📊 实时行情综合看板")
-st.caption(f"更新时间: {datetime.now().strftime('%H:%M:%S')} | 配色：涨(绿) / 跌(红) / 平(灰)")
+st.title("🚀 我的股票实时监控面板")
 
-# 1. 侧边栏
-default_tickers = "AQN.TO, BCE.TO, CEMX.TO, COIN.NE, CRM.NE, CU.TO, ILLM.TO, LIF.NE, XSP.TO, VGRO.TO, UNH.NE, SHOP.TO, T.TO, MSTR.NE, NOWS.NE, AMD, AMZN, AVGO, COIN, COST, CRM, GOOG, LULU, META, MSFT, MSTR, NFLX, NOW, NVDA, PLTR, SHOP, SMCI, TSLA, UNH"
-tickers_raw = st.sidebar.text_area("监控名单:", default_tickers, height=150)
+# 侧边栏配置
+st.sidebar.header("配置中心")
+ticker_raw = st.sidebar.text_area(
+    "股票代码列表 (已为你格式化):", 
+    "AQN.TO, BCE.TO, CEMX.TO, COIN.NE, CRM.NE, CU.TO, ILLM.TO, LIF.NE, XSP.TO, VRGO.TO, UNH.NE, SHOP.TO, T.TO, MSTR.NE, NOWS.NE, AMD, AMZN, AVGO, COIN, COST, CRM, GOOG, LULU, META, MSFT, MSTR, NFLX, NOW, NVDA, PLTR, SHOP, SMCI, TSLA, UNH",
+    height=200
+)
 
-if st.sidebar.button("🚀 刷新数据"):
-    tickers = [t.strip().upper() for t in tickers_raw.split(",") if t.strip()]
-    data_results = []
+# 按钮：强制开始抓取
+run_button = st.sidebar.button("📊 点击获取/更新数据")
+
+if run_button:
+    tickers = [t.strip().upper() for t in ticker_raw.split(",") if t.strip()]
+    st.write(f"正在尝试获取 {len(tickers)} 只股票的数据...")
     
-    with st.spinner('正在同步数据...'):
-        for t in tickers:
+    data_list = []
+    placeholder = st.empty() # 创建一个动态显示区域
+    
+    # 逐个抓取，防止整体崩溃
+    for t in tickers:
+        with st.status(f"正在抓取 {t}...", expanded=False) as status:
             try:
-                stock = yf.Ticker(t)
-                hist = stock.history(period="2d")
-                if hist.empty: continue
+                # 使用较短的 period 提高速度
+                tick = yf.Ticker(t)
+                # 获取最近两天的价格来计算涨跌
+                hist = tick.history(period="2d")
                 
-                current_p = hist['Close'].iloc[-1]
-                prev_p = hist['Close'].iloc[-2]
-                change = ((current_p - prev_p) / prev_p) * 100
-                
-                # 统一成交量单位
-                vol = stock.fast_info['last_volume']
-                vol_str = f"{vol/1e6:.2f}M" if vol >= 1e6 else f"{vol/1e3:.2f}K"
+                if not hist.empty and len(hist) >= 1:
+                    current_price = hist['Close'].iloc[-1]
+                    # 如果有前一天的价格就算涨幅，否则显示 0
+                    if len(hist) > 1:
+                        prev_close = hist['Close'].iloc[-2]
+                        change = ((current_price - prev_close) / prev_close) * 100
+                    else:
+                        change = 0.0
+                    
+                    # 尝试获取 PE 和 成交量
+                    info = tick.fast_info
+                    
+                    data_list.append({
+                        "代码": t,
+                        "价格": round(current_price, 2),
+                        "涨跌幅(%)": round(change, 2),
+                        "成交量": f"{info['last_volume']/1e6:.2f}M" if 'last_volume' in info else "N/A"
+                    })
+                    status.update(label=f"✅ {t} 完成", state="complete")
+                else:
+                    status.update(label=f"⚠️ {t} 无数据 (可能是闭市或代码错)", state="error")
+            except Exception as e:
+                status.update(label=f"❌ {t} 发生错误", state="error")
+                continue
 
-                data_results.append({
-                    "代码": t,
-                    "价格": round(current_p, 2),
-                    "涨跌幅": round(change, 2),
-                    "PE": stock.info.get('forwardPE', 'N/A'),
-                    "成交量": vol_str
-                })
-            except: continue
-
-    if data_results:
-        df = pd.DataFrame(data_results).sort_values("涨跌幅", ascending=False)
-
-        # --- 第一部分：手动分配颜色的柱状热力图 ---
+    # 抓取完成后显示结果
+    if data_list:
+        df = pd.DataFrame(data_list)
+        
+        # 1. 热力图
         st.subheader("🔥 今日涨跌幅分布")
-        
-        # 核心配色逻辑：根据数值正负直接指定颜色
-        # 涨(>0.2%): 绿色 | 跌(<-0.2%): 红色 | 平(-0.2%到0.2%): 深灰色
-        colors = []
-        for val in df['涨跌幅']:
-            if val > 0.2: colors.append('#00FF00') # 绿色
-            elif val < -0.2: colors.append('#FF0000') # 红色
-            else: colors.append('#404040') # 深灰色基准
-
-        fig = go.Figure(data=[go.Bar(
-            x=df['代码'],
-            y=df['涨跌幅'],
-            marker_color=colors, # 强制应用我们定义的颜色列表
-            text=df['涨跌幅'].apply(lambda x: f"{x}%"),
-            textposition='outside'
-        )])
-
-        fig.update_layout(
-            plot_bgcolor='rgba(0,0,0,0)',
-            yaxis_title="涨跌幅 (%)",
-            xaxis_tickangle=-45,
-            height=400,
-            margin=dict(l=20, r=20, t=20, b=20)
-        )
+        fig = px.bar(df, x="代码", y="涨跌幅(%)", color="涨跌幅(%)",
+                     color_continuous_scale='RdYlGn', 
+                     range_color=[-3, 3],
+                     text_auto='.2f')
         st.plotly_chart(fig, use_container_width=True)
-
-        st.divider()
-
-        # --- 第二部分：实时数据清单 ---
-        st.subheader("📋 详细行情数据表")
         
-        # 表格颜色函数
-        def style_change(val):
-            if isinstance(val, (int, float)):
-                if val > 0.2: return 'background-color: rgba(0, 255, 0, 0.2); color: #00FF00'
-                if val < -0.2: return 'background-color: rgba(255, 0, 0, 0.2); color: #FF0000'
-            return 'color: #808080'
-
-        st.dataframe(
-            df.style.applymap(style_change, subset=['涨跌幅']),
-            use_container_width=True,
-            height=800
-        )
+        # 2. 详细列表
+        st.subheader("📋 实时数据清单")
+        st.dataframe(df, use_container_width=True, height=800)
     else:
-        st.error("未获取到数据，请重试。") 
+        st.error("所有股票都未能获取数据，请检查网络连接或稍后再试。")
+
+else:
+    st.info("👈 请点击左侧按钮开始获取实时行情")
