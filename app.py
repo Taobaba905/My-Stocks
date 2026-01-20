@@ -96,22 +96,21 @@ if st.sidebar.button("🚀 获取行情数据"):
                 return 'color: #FFD700; font-weight: bold'
             return ''
 
-        # 配置表格：使用 LinkColumn 使代码可点击
+        # 配置表格：简化 LinkColumn 配置以修复 TypeError
         st.dataframe(
             df.style.applymap(style_change, subset=['涨跌幅']),
             column_config={
-                "代码": st.column_config.LinkColumn(
+                "跳转链接": st.column_config.LinkColumn(
                     "代码 (点击看图)",
-                    help="点击代码跳转到 Yahoo Finance 查看实时图表",
-                    validate="^https://.*",
-                    display_text="^https://finance\.yahoo\.com/quote/(.*)", # 正则提取显示为股票简称
-                    url_col="跳转链接", # 链接来源
+                    help="点击跳转到 Yahoo Finance 查看实时图表",
+                    # 我们直接让“跳转链接”这一列显示成股票代码的名字
+                    display_text="https://finance\.yahoo\.com/quote/(.*)" 
                 ),
                 "当前最新价/当日收盘价": st.column_config.NumberColumn("价格", format="%.3f"),
                 "货币": st.column_config.TextColumn("货币"),
                 "涨跌幅": st.column_config.NumberColumn("涨跌幅 (%)", format="%.2f%%"),
                 "成交量": st.column_config.TextColumn("成交量"),
-                "跳转链接": None # 彻底隐藏原始链接列
+                "代码": None  # 隐藏原始的代码列，因为我们已经把链接列改名为代码了
             },
             use_container_width=True,
             height=800,
