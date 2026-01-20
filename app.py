@@ -43,9 +43,10 @@ if st.sidebar.button("🚀 刷新全量数据"):
                 data_results.append({
                     "代码": t,
                     "价格": round(current_p, 2),
+                    "货币": currency_label,
                     "涨跌幅(%)": round(change, 2),
                     "PE": stock.info.get('forwardPE', 'N/A'),
-                    "成交量": vol_str,
+                    "成交量": vol_str  
                     "raw_vol": vol
                 })
             except: continue
@@ -92,8 +93,14 @@ if st.sidebar.button("🚀 刷新全量数据"):
         st.dataframe(
             df.style.applymap(color_text, subset=['涨跌幅(%)']),
             column_config={
+                "代码": st.column_config.TextColumn("代码"),
                 "涨跌幅(%)": st.column_config.NumberColumn(format="%.2f%%"),
-                "价格": st.column_config.NumberColumn(format="$ %.2f"),
+                "价格": st.column_config.NumberColumn(
+                    "价格 (加币/美金)", 
+                    help="根据后缀自动识别货币",
+                    format="%.2f",
+                    width="medium",
+                ),
                 "raw_vol": None
             },
             use_container_width=True,
