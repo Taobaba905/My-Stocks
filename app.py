@@ -54,9 +54,9 @@ if st.sidebar.button("🚀 获取行情数据"):
 
                 data_results.append({
                     "代码": t,
-                    "当前最新价/当日收盘价": round(curr_price, 2),
+                    "当前最新价/当日收盘价": round(curr_price, 4),
                     "货币": currency,
-                    "涨跌幅": round(change, 2),
+                    "涨跌幅": round(change, 3),
                     "成交量": vol_str
                 })
             except:
