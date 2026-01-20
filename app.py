@@ -47,7 +47,6 @@ if st.sidebar.button("🚀 刷新全量数据"):
                     "涨跌幅(%)": round(change, 2),
                     "PE": stock.info.get('forwardPE', 'N/A'),
                     "成交量": vol_str  
-                    "raw_vol": vol
                 })
             except: continue
 
@@ -101,7 +100,6 @@ if st.sidebar.button("🚀 刷新全量数据"):
                     format="%.2f",
                     width="medium",
                 ),
-                 "raw_vol": None,
             },
             use_container_width=True,
             height=800
