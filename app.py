@@ -89,9 +89,9 @@ if st.sidebar.button("🚀 获取行情数据"):
             df.style.applymap(style_change, subset=['涨跌幅']),
             column_config={
                 "代码": st.column_config.TextColumn("代码"),
-                "当前最新价/当日收盘价": st.column_config.NumberColumn("当前最新价/当日收盘价", format="%.2f"),
+                "当前最新价/当日收盘价": st.column_config.NumberColumn("当前最新价/当日收盘价", format="%.4f"),
                 "货币": st.column_config.TextColumn("货币"),
-                "涨跌幅": st.column_config.NumberColumn("涨跌幅 (%)", format="%.2f%%"),
+                "涨跌幅": st.column_config.NumberColumn("涨跌幅 (%)", format="%.3f%%"),
                 "成交量": st.column_config.TextColumn("成交量"),
             },
             use_container_width=True,
