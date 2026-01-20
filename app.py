@@ -47,8 +47,8 @@ if st.sidebar.button("🚀 刷新全量数据"):
                     "价格": curr,
                     "货币": currency_label,
                     "涨跌幅(%)": round(change, 2),
-                    "PE": stock.info.get('forwardPE', 'N/A'),
-                    "成交量": vol_str
+                    "成交量": vol_str,
+                    "PE": stock.info.get('forwardPE', 'N/A')
                 })
             except:
                 continue
