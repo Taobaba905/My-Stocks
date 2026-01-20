@@ -29,6 +29,12 @@ if st.sidebar.button("🚀 刷新全量数据"):
                 current_p = hist['Close'].iloc[-1]
                 prev_p = hist['Close'].iloc[-2]
                 change = ((current_p - prev_p) / prev_p) * 100
+
+                # --- 后缀逻辑与货币识别 ---
+                if any(suffix in t for suffix in [".TO", ".V", ".NE"]):
+                    currency_label = "加币"
+                else:
+                    currency_label = "美金"
                 
                 # 格式化成交量
                 vol = fast['last_volume']
