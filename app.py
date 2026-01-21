@@ -47,16 +47,12 @@ if st.sidebar.button("🚀 获取并排序数据"):
                     prev_close = f['previous_close']
                     vol = f['last_volume']
                 else:
-
-                # 历史逻辑：获取指定日期的数据
-                hist = stock.history(start=selected_date - timedelta(days=5), end=selected_date + timedelta(days=1))
-                if len(hist) < 2: continue
-                curr_price = hist['Close'].iloc[-1]
-                prev_close = hist['Close'].iloc[-2]
-                vol = hist['Volume'].iloc[-1]
-
-
-                
+                     # 历史逻辑：获取指定日期的数据
+                    hist = stock.history(start=selected_date - timedelta(days=5), end=selected_date + timedelta(days=1))
+                    if len(hist) < 2: continue
+                    curr_price = hist['Close'].iloc[-1]
+                    prev_close = hist['Close'].iloc[-2]
+                    vol = hist['Volume'].iloc[-1]                
 
                 # --- 【3. 涨跌幅计算逻辑】 ---
                 change = ((curr_price - prev_close) / prev_close * 100) if prev_close else 0
